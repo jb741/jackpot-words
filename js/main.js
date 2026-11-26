@@ -586,6 +586,14 @@ function wireUI() {
   });
 
   document.addEventListener('visibilitychange', () => { if (document.hidden) sound.suspend(); else if (started) sound.resume(); });
+  window.addEventListener('pageshow', () => { if (started) sound.resume(); });
+  // iPads only let audio start or resume during certain taps (a finger lifting, a click, a key press),
+  // not when a finger first touches down. The keyboard and lever react on touch-down, so listen for
+  // these everywhere: whatever gets tapped next wakes the sound up if it went quiet, e.g. after
+  // switching apps or locking the screen.
+  for (const type of ['pointerup', 'touchend', 'click', 'keydown']) {
+    window.addEventListener(type, () => { if (started && !document.hidden) sound.unlock(); }, { capture: true, passive: true });
+  }
   document.addEventListener('gesturestart', (e) => e.preventDefault());
   document.addEventListener('dblclick', (e) => e.preventDefault());
 }

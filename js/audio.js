@@ -49,12 +49,24 @@ export class Sound {
       this.delayIn.connect(this.delay);
 
       this.noiseBuf = this.noiseBuffer(2);
+      // Whenever audio comes back (after a resume), pick the music up from "now" instead of
+      // firing a pile of notes that were due while it was paused.
+      ctx.onstatechange = () => { if (ctx.state === 'running') this.realign(); };
     }
-    if (this.ctx.state !== 'running') this.ctx.resume();
+    if (this.ctx.state !== 'running') {
+      this.ctx.resume().catch(() => {});
+      // iPad/iPhone: starting a silent sound inside the tap is what makes the unlock stick.
+      const src = this.ctx.createBufferSource();
+      src.buffer = this.ctx.createBuffer(1, 1, 22050);
+      src.connect(this.ctx.destination);
+      src.start(0);
+    }
   }
 
-  suspend() { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend(); }
-  resume() { if (this.ctx && this.ctx.state !== 'running') this.ctx.resume(); }
+  suspend() { if (this.ctx && this.ctx.state === 'running') this.ctx.suspend().catch(() => {}); }
+  /** Try to resume without a tap (works on desktop; iPad may refuse, and then the next tap resumes it). */
+  resume() { if (this.ctx && this.ctx.state !== 'running') this.ctx.resume().catch(() => {}); }
+  realign() { if (this.playing && this.nextT < this.now) this.nextT = this.now + 0.05; }
 
   setSfx(on) { this.sfxOn = on; if (this.sfx) this.sfx.gain.setTargetAtTime(on ? 0.85 : 0, this.ctx.currentTime, 0.05); }
   setMusic(on) {
@@ -288,6 +300,8 @@ export class Sound {
   schedule() {
     if (!this.ok) return;
     const spb = 60 / this.bpm / 4;
+    // If timers were held back (background tab, busy frame), skip ahead rather than cram late notes in.
+    if (this.nextT < this.now - 0.2) this.nextT = this.now + 0.05;
     while (this.nextT < this.now + 0.16) {
       this.playStep(this.step, this.nextT, spb);
       this.nextT += spb;
