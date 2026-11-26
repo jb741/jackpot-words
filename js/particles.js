@@ -1,5 +1,6 @@
 // Glowing additive spark particles (CPU-simulated, drawn as one Points object).
 import * as THREE from 'three';
+import { GLOW_LAYER } from './stage.js';
 
 const VERT = /* glsl */`
   attribute vec3 color;
@@ -58,6 +59,7 @@ export class Particles {
       transparent: true, depthWrite: false, depthTest: false, blending: THREE.AdditiveBlending,
     });
     this.points = new THREE.Points(g, this.mat);
+    this.points.layers.set(GLOW_LAYER);
     this.points.frustumCulled = false;
     this.points.renderOrder = 10;
     parent.add(this.points);

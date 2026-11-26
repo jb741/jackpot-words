@@ -1,5 +1,6 @@
 // The 3D game board. Every square is a little slot-machine reel drawn by a shader.
 import * as THREE from 'three';
+import { GLOW_LAYER } from './stage.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 export const ROWS = 6;
@@ -419,6 +420,7 @@ export class Board {
     );
     this.panel.renderOrder = -1;
     this.panel.position.z = -0.35;
+    this.panel.layers.set(GLOW_LAYER); // the neon frame gets bloom; the tiles are drawn after it, crisp
     this.panel.visible = false; // shown once the first board is built
     this.sway.add(this.panel);
     this.tiles = [];

@@ -5,6 +5,21 @@ import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
+/** Board objects on this layer (neon frame, sparks) get bloom. Everything else on the board (the tiles)
+ *  is drawn after the bloom pass, so their red/blue/green stays crisp instead of bleeding together. */
+export const GLOW_LAYER = 1;
+
+/** A RenderPass that only draws the given camera layers. */
+class LayerPass extends RenderPass {
+  constructor(scene, camera, mask) { super(scene, camera); this.mask = mask; }
+  render(...args) {
+    const saved = this.camera.layers.mask;
+    this.camera.layers.mask = this.mask;
+    super.render(...args);
+    this.camera.layers.mask = saved;
+  }
+}
+
 const SKY_VERT = /* glsl */`
   varying vec3 vDir;
   void main() { vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }
@@ -155,6 +170,7 @@ export class Stage {
     this.boardScene = new THREE.Scene();
     this.boardCam = new THREE.PerspectiveCamera(28, 1, 1, 200);
     this.boardCam.position.set(0, 0, 60);
+    this.boardCam.layers.enable(GLOW_LAYER);
     this.boardScene.environment = this.makeEnv();
 
     // --- post
@@ -198,15 +214,25 @@ export class Stage {
     const rt = new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: high ? 4 : 0 });
     const comp = new EffectComposer(this.renderer, rt);
     const bgPass = new RenderPass(this.bgScene, this.bgCam);
-    const boardPass = new RenderPass(this.boardScene, this.boardCam);
-    boardPass.clear = false;
-    boardPass.clearDepth = true;
     comp.addPass(bgPass);
-    comp.addPass(boardPass);
     this.bloom = null;
     if (high) {
+      // background + board frame + sparks -> bloom -> tiles on top
+      const glowPass = new LayerPass(this.boardScene, this.boardCam, 1 << GLOW_LAYER);
+      glowPass.clear = false;
+      glowPass.clearDepth = true;
+      comp.addPass(glowPass);
       this.bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.85, 0.55, 0.62);
       comp.addPass(this.bloom);
+      const tilePass = new LayerPass(this.boardScene, this.boardCam, 1);
+      tilePass.clear = false;
+      tilePass.clearDepth = true;
+      comp.addPass(tilePass);
+    } else {
+      const boardPass = new RenderPass(this.boardScene, this.boardCam);
+      boardPass.clear = false;
+      boardPass.clearDepth = true;
+      comp.addPass(boardPass);
     }
     comp.addPass(new OutputPass());
     this.composer = comp;
