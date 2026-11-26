@@ -248,10 +248,11 @@ export class Stage {
     this.bgCam.updateProjectionMatrix();
   }
 
-  /** Put the horizon at a given height on screen (0 = top, 1 = bottom) by shifting the lens. */
-  setHorizon(frac) {
+  /** Put the vanishing point at a spot on screen (0..1 across, 0..1 down) by shifting the lens. */
+  setHorizon(frac, xFrac = 0.5) {
     const e = this.bgCam.projectionMatrix.elements;
     this.bgCam.updateProjectionMatrix();
+    e[8] = -(xFrac * 2 - 1);
     e[9] = -(1 - frac * 2);
     this.bgCam.projectionMatrixInverse.copy(this.bgCam.projectionMatrix).invert();
   }

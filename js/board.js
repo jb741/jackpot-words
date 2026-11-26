@@ -473,7 +473,7 @@ export class Board {
     const H = 2 * cam.position.z * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     const ppu = vh / H;
     const bw = this.size.w + 0.7, bh = this.size.h + 0.7;
-    const maxTilePx = Math.min(104, rect.height / (this.rows + 0.6));
+    const maxTilePx = Math.min(132, rect.height / (this.rows + 0.6));
     const s = Math.min((rect.width * 0.97) / (bw * ppu), (rect.height * 0.97) / (bh * ppu), maxTilePx / ppu);
     this.root.scale.setScalar(s);
     const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;

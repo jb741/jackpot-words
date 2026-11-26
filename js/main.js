@@ -49,9 +49,15 @@ async function boot() {
   wireUI();
   updateChrome();
   onResize();
-  window.addEventListener('resize', onResize);
-  if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
+  window.addEventListener('resize', queueResize);
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', queueResize);
   window.addEventListener('orientationchange', () => setTimeout(onResize, 250));
+  // Safari's toolbar sliding, rotation, the hint line changing: re-fit whenever these boxes change size.
+  if (window.ResizeObserver) {
+    const ro = new ResizeObserver(queueResize);
+    ro.observe($('#scene'));
+    ro.observe($('#board-area'));
+  }
   requestAnimationFrame(loop);
   loadDict().then(() => updateLeverReady(true));
 
@@ -121,15 +127,32 @@ function autoQuality(raw) {
   }
 }
 
+/** Everything is measured from the canvas's real on-screen box, so the 3D board lines up with the page
+ *  (and taps land on the right square) even when the browser's idea of the window size differs. */
+function canvasRect() {
+  const r = $('#scene').getBoundingClientRect();
+  return r.width && r.height ? r : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+}
+
 function onResize() {
-  const w = window.innerWidth, h = window.innerHeight;
+  const cr = canvasRect();
+  const w = cr.width, h = cr.height;
   stage.resize(w, h);
-  const rect = $('#board-area').getBoundingClientRect();
+  const a = $('#board-area').getBoundingClientRect();
+  const rect = { left: a.left - cr.left, top: a.top - cr.top, width: a.width, height: a.height };
   board.layout(w, h, rect, stage.boardCam, stage.renderer.getPixelRatio());
   particles.setScale(board.pointScale);
-  stage.setHorizon(Math.min(0.85, (rect.top + rect.height * 0.62) / h));
+  // sun and grid line up behind the board (in landscape the board sits left of the keyboard)
+  stage.setHorizon(Math.min(0.85, (rect.top + rect.height * 0.62) / h), (rect.left + rect.width / 2) / w);
   lever.measure();
   lever.draw();
+}
+
+let resizeQueued = false;
+function queueResize() {
+  if (resizeQueued) return;
+  resizeQueued = true;
+  requestAnimationFrame(() => { resizeQueued = false; onResize(); });
 }
 
 // ---------------------------------------------------------------- board state
@@ -557,7 +580,8 @@ function wireUI() {
   area.addEventListener('pointerdown', (e) => {
     sound.unlock();
     if (!started) return;
-    const ndc = new THREE.Vector2((e.clientX / window.innerWidth) * 2 - 1, -(e.clientY / window.innerHeight) * 2 + 1);
+    const cr = canvasRect();
+    const ndc = new THREE.Vector2(((e.clientX - cr.left) / cr.width) * 2 - 1, -((e.clientY - cr.top) / cr.height) * 2 + 1);
     const t = board.pick(ndc, stage.boardCam);
     if (t && canType() && t.row === currentRow()) {
       game.cursor = t.col;
