@@ -1,11 +1,11 @@
 // Jackpot Words: wires the 3D board, sound, keyboard, lever and game rules together.
 import * as THREE from 'three';
 import { Stage } from './stage.js';
-import { Board, ROWS, BLANK, letterIndex, makeGlyphAtlas } from './board.js';
+import { Board, BLANK, letterIndex, makeGlyphAtlas } from './board.js';
 import { Particles } from './particles.js';
 import { Sound } from './audio.js';
 import { Keyboard, Lever, toast, banner, showModal, closeModal, isModalOpen, miniTiles, segHtml, switchHtml, statsHtml, growBars } from './ui.js';
-import { Store, evaluate, isValidWord, loadDict, MAX_GUESSES, msUntilTomorrow } from './game.js';
+import { Store, evaluate, isValidWord, loadDict, guessesFor, msUntilTomorrow } from './game.js';
 
 const $ = (s) => document.querySelector(s);
 const store = new Store();
@@ -19,7 +19,9 @@ let game;
 let busy = false;
 let started = false;
 
-const WIN_NAMES = ['MEGA JACKPOT!!!', 'SUPER JACKPOT!!', 'JACKPOT!', 'BIG WIN!', 'NICE WIN!', 'PHEW!'];
+// Banner by spin count; the very last spin is always 'PHEW!'.
+const WIN_NAMES = ['MEGA JACKPOT!!!', 'SUPER JACKPOT!!', 'JACKPOT!', 'BIG WIN!', 'NICE WIN!', 'WINNER!'];
+const winName = (n, max) => (n === max && n > 1 ? 'PHEW!' : WIN_NAMES[Math.min(n, WIN_NAMES.length) - 1]);
 const BURST = {
   hit: { colors: ['#1dff7a', '#b8ffd6', '#ffffff', '#ffd319'], count: 46, speed: 6.5, life: 0.95 },
   near: { colors: ['#3a7bff', '#a9c4ff', '#22e8ff', '#ffffff'], count: 28, speed: 5, life: 0.8 },
@@ -41,7 +43,7 @@ async function boot() {
   board = new Board(stage.boardScene, atlas, stage.boardScene.environment);
   particles = new Particles(board.root);
   keyboard = new Keyboard($('#keyboard'), { onLetter: typeLetter, onBack: backspace });
-  lever = new Lever($('#lever'), { onPull: submit, onGrab: () => sound.unlock() });
+  lever = new Lever($('#lever'), { onPull: submit, onGrab: () => sound.unlock(), onLocked: leverLocked });
   game = store.currentGame();
 
   wireUI();
@@ -51,7 +53,7 @@ async function boot() {
   if (window.visualViewport) window.visualViewport.addEventListener('resize', onResize);
   window.addEventListener('orientationchange', () => setTimeout(onResize, 250));
   requestAnimationFrame(loop);
-  loadDict();
+  loadDict().then(() => updateLeverReady(true));
 
   const btn = $('#btn-start');
   btn.disabled = false;
@@ -71,7 +73,7 @@ function start() {
   sound.whoosh();
   $('#splash').classList.add('gone');
   setTimeout(() => $('#splash') && $('#splash').remove(), 800);
-  board.build(game.len, { animate: true });
+  board.build(game.len, { rows: guessesFor(game.len), animate: true });
   onResize();
   restoreBoard();
   stage.pulse(0.7);
@@ -147,10 +149,10 @@ function restoreBoard() {
     board.setActiveRow(row);
   } else {
     board.setCursor(-1, -1);
-    board.setActiveRow(ROWS);
+    board.setActiveRow(board.rows);
   }
   updateChrome();
-  updateLeverReady();
+  updateLeverReady(true);
 }
 
 function canType() { return started && !busy && game.status === 'playing' && !isModalOpen(); }
@@ -199,8 +201,46 @@ function moveCursor(d) {
   sound.select();
 }
 
-function updateLeverReady() {
-  lever.setReady(game.status === 'playing' && game.draft.every(Boolean));
+/** What the current row needs before the lever will pull. */
+function rowState() {
+  if (game.status !== 'playing') return { state: 'done' };
+  const missing = game.draft.filter((x) => !x).length;
+  if (missing) return { state: missing === game.len ? 'empty' : 'partial', missing };
+  const word = game.draft.join('');
+  if (S.strict && !isValidWord(word.toLowerCase())) return { state: 'invalid', word };
+  return { state: 'ready', word };
+}
+
+let lastState = null;
+/** Lock or unlock the lever, outline a non-word row, and say what's needed in the hint line. */
+function updateLeverReady(quiet = false) {
+  const { state, missing, word } = rowState();
+  lever.setLocked(state !== 'ready');
+  if (game.status === 'playing') board.warnRow(currentRow(), state === 'invalid');
+  const hint = $('#hint');
+  hint.className = state;
+  if (busy) hint.textContent = '';
+  else if (state === 'empty') hint.textContent = 'Tap letters to fill the row';
+  else if (state === 'partial') hint.textContent = `${missing} more ${missing === 1 ? 'letter' : 'letters'} to unlock the lever`;
+  else if (state === 'invalid') hint.textContent = `${word} isn't in the word list. Change a letter.`;
+  else if (state === 'ready') hint.textContent = 'Real word! Pull the lever';
+  else hint.textContent = game.mode === 'daily' ? 'Come back tomorrow for a new daily word' : 'Tap NEW WORD to play again';
+  if (!quiet && !busy && state !== lastState) {
+    if (state === 'ready') sound.leverReady();
+    else if (state === 'invalid') { board.shakeRow(currentRow()); sound.invalid(); }
+  }
+  lastState = state;
+}
+
+/** Someone tugged the locked lever: point at what's missing. */
+function leverLocked() {
+  if (!started || busy || game.status !== 'playing' || isModalOpen()) return;
+  sound.invalid();
+  board.shakeRow(currentRow());
+  const hint = $('#hint');
+  hint.classList.remove('nudge');
+  void hint.offsetWidth;
+  hint.classList.add('nudge');
 }
 
 // ---------------------------------------------------------------- the spin
@@ -225,6 +265,7 @@ async function submit() {
 
   busy = true;
   lever.setBusy(true);
+  updateLeverReady(true);
   board.setCursor(-1, -1);
   const results = evaluate(word, game.answer);
   const won = results.every((r) => r === 'hit');
@@ -258,7 +299,7 @@ async function submit() {
   game.guesses.push(word);
   game.results.push(results);
   if (won) game.status = 'won';
-  else if (game.guesses.length >= MAX_GUESSES) game.status = 'lost';
+  else if (game.guesses.length >= guessesFor(game.len)) game.status = 'lost';
   else { game.draft = new Array(game.len).fill(''); game.cursor = 0; }
   if (game.status !== 'playing') store.recordResult(game);
   else store.save();
@@ -269,7 +310,7 @@ async function submit() {
 
   busy = false;
   lever.setBusy(false);
-  updateLeverReady();
+  updateLeverReady(true);
   updateChrome();
 }
 
@@ -285,8 +326,9 @@ async function celebrate(row) {
   stage.pulse(1.2);
   stage.setSpeed(700);
   setTimeout(() => stage.setSpeed(70), 2600);
-  sound.win(7 - n);
-  const shots = 8 + (7 - n) * 4;
+  const tier = Math.max(1, 7 - n); // fewer spins, bigger party
+  sound.win(tier);
+  const shots = 8 + tier * 4;
   for (let i = 0; i < shots; i++) {
     setTimeout(() => {
       const x = (Math.random() - 0.5) * board.size.w * 1.3;
@@ -299,13 +341,13 @@ async function celebrate(row) {
     }, 200 + i * 130);
   }
   for (let c = 0; c < game.len; c++) setTimeout(() => burst(row, c, 'hit'), c * 90);
-  await banner(`${WIN_NAMES[n - 1]}<small>${n} ${n === 1 ? 'SPIN' : 'SPINS'}</small>`, '', 2300);
+  await banner(`${winName(n, guessesFor(game.len))}<small>${n} ${n === 1 ? 'SPIN' : 'SPINS'}</small>`, '', 2300);
   showEnd();
 }
 
 async function gameOver() {
   sound.lose();
-  board.setActiveRow(ROWS);
+  board.setActiveRow(board.rows);
   await banner(`GAME OVER<small>THE WORD WAS ${game.answer.toUpperCase()}</small>`, 'lose', 2600);
   showEnd();
 }
@@ -323,10 +365,10 @@ async function newWord() {
     await board.clearAll();
     stage.setSpeed(70);
     game = store.newFreeGame();
-    restoreBoard();
     busy = false;
+    restoreBoard();
     lever.setBusy(false);
-    updateLeverReady();
+    updateLeverReady(true);
   };
   if (game.status === 'playing' && game.guesses.length) confirmSkip(go);
   else go();
@@ -358,18 +400,18 @@ async function changeGame(changes) {
     if (next.len !== board.cols) {
       await board.leave();
       game = next;
-      board.build(game.len, { animate: true });
+      board.build(game.len, { rows: guessesFor(game.len), animate: true });
       onResize();
     } else {
       await board.clearAll();
       game = next;
     }
     store.save();
+    busy = false;
     restoreBoard();
     stage.setSpeed(70);
-    busy = false;
     lever.setBusy(false);
-    updateLeverReady();
+    updateLeverReady(true);
     if (game.status !== 'playing') setTimeout(showEnd, 700);
   };
   if (discarding) confirmSkip(go);
@@ -389,7 +431,8 @@ function openHelp() {
   sound.whoosh();
   const ex = (w, r) => miniTiles(w, r);
   showModal('HOW TO PLAY', `
-    <p>Guess the secret word in <b>6 spins</b>. Tap letters on the keyboard to fill the row, then <b>pull the lever</b> (or press Enter) to spin the reels.</p>
+    <p>Guess the secret word. You get one more spin than the word has letters: <b>6 spins</b> for 5 letters, <b>7</b> for 6, <b>8</b> for 7.</p>
+    <p>Tap letters on the keyboard to fill the row. When it spells a real word the lever unlocks: <b>pull it</b> (or press Enter) to spin the reels.</p>
     <p>Tap any square in the row to choose which spot your next letter goes in.</p>
     <div class="legend">
       <div class="legend-row">${ex('s', ['hit'])}<p><b>Green</b>: right letter, right spot.</p></div>
@@ -404,7 +447,7 @@ function openHelp() {
 
 function openStats(len = game.len) {
   sound.whoosh();
-  const render = (L) => statsHtml(store.data.stats[L], 0);
+  const render = (L) => statsHtml(store.data.stats[L], 0, guessesFor(L));
   const m = showModal('STATS', `<div class="stat-tabs">${segHtml('slen', [[5, '5 LETTERS'], [6, '6'], [7, '7']], len)}</div><div class="stats-body">${render(len)}</div>`);
   const body = m.querySelector('.stats-body');
   growBars(body);
@@ -451,6 +494,7 @@ function openSettings() {
     sw.setAttribute('aria-checked', S[k]);
     if (k === 'sfx') sound.setSfx(S.sfx);
     if (k === 'music') sound.setMusic(S.music);
+    if (k === 'strict') updateLeverReady(true);
     store.save();
     updateChrome();
     sound.ui();
@@ -465,7 +509,7 @@ function showEnd() {
   const st = store.data.stats[game.len];
   let html = `<div class="end-word">${miniTiles(game.answer, won ? [...game.answer].map(() => 'hit') : null, true)}</div>
     <div class="end-sub">${won ? `SOLVED IN ${n} ${n === 1 ? 'SPIN' : 'SPINS'}` : 'BETTER LUCK NEXT SPIN'}</div>
-    ${statsHtml(st, won ? n : 0)}`;
+    ${statsHtml(st, won ? n : 0, guessesFor(game.len))}`;
   if (game.mode === 'daily') {
     html += `<div class="countdown">NEXT DAILY WORD IN<b id="cd">--:--:--</b></div>
       <div class="btn-row"><button class="btn primary" data-act="free">PLAY FREE MODE</button></div>`;

@@ -144,6 +144,13 @@ export class Sound {
   del() { if (!this.ok) return; this.tone({ type: 'triangle', f: 520, f2: 260, dur: 0.09, g: 0.12 }); }
   select() { if (!this.ok) return; this.tone({ type: 'sine', f: 1400, f2: 1800, dur: 0.05, g: 0.07 }); }
   ui() { if (!this.ok) return; this.tone({ type: 'triangle', f: 880, f2: 1320, dur: 0.06, g: 0.08 }); }
+  /** The lever unlocks: a quick rising two-note chime. */
+  leverReady() {
+    if (!this.ok) return;
+    const t = this.now;
+    this.tone({ type: 'triangle', f: 1047, t, dur: 0.07, g: 0.07 });
+    this.tone({ type: 'triangle', f: 1568, t: t + 0.07, dur: 0.18, g: 0.07, r: 0.16, verb: 0.2 });
+  }
   whoosh() { if (!this.ok) return; this.noise({ dur: 0.32, g: 0.12, f: 400, f2: 3800, q: 1.2, a: 0.08, r: 0.2 }); }
 
   lever() {

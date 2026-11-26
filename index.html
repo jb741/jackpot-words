@@ -60,13 +60,14 @@
     <main id="board-area" aria-label="Game board"></main>
 
     <section id="controls">
+      <div id="hint" aria-live="polite"></div>
       <div class="controls-inner">
         <div id="keyboard" aria-label="Keyboard"></div>
-        <div id="lever" role="button" aria-label="Pull the lever to spin">
+        <div id="lever" role="button" aria-label="Pull the lever to spin" aria-disabled="true">
           <div class="lever-plate"></div>
           <div class="lever-slot"></div>
           <div class="lever-shaft"></div>
-          <div class="lever-knob"></div>
+          <div class="lever-knob"><div class="lever-lock" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></div></div>
           <div class="lever-label">PULL</div>
         </div>
       </div>

@@ -163,6 +163,41 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 #lever.ready .lever-label { animation: blink 0.9s steps(2) infinite; }
 #lever.busy { cursor: default; }
 #lever.busy .lever-label { opacity: .4; }
+
+/* Locked until the row spells a real word */
+#lever.locked { cursor: not-allowed; }
+#lever.locked .lever-knob { filter: saturate(.12) brightness(.6); box-shadow: inset 0 -6px 12px rgba(0,0,0,.5); }
+#lever.locked .lever-shaft { filter: brightness(.55); box-shadow: none; }
+#lever.locked .lever-slot { box-shadow: inset 0 0 6px #000; }
+#lever.locked .lever-label { color: #8d7bb5; text-shadow: none; letter-spacing: .08em; }
+.lever-knob { display: grid; place-items: center; }
+.lever-lock { width: 46%; opacity: 0; transition: opacity .25s; pointer-events: none; color: #fff; }
+.lever-lock svg { display: block; width: 100%; height: auto; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+#lever.locked .lever-lock { opacity: 1; }
+#lever.unlocking .lever-lock { animation: lockpop .55s ease-out forwards; }
+#lever.ready.unlocking .lever-knob { animation: knobunlock .6s ease-out, knobpulse .9s ease-in-out .6s infinite; }
+@keyframes lockpop {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: translateY(-16px) scale(1.8); }
+}
+@keyframes knobunlock { 0% { filter: brightness(2.4) saturate(1.5); } 100% { filter: none; } }
+
+/* One line above the keyboard that always says what the row needs */
+#hint {
+  max-width: 860px; margin: -2px auto 8px; min-height: 1.35em; text-align: center;
+  font-size: clamp(11px, 1.55vw, 14px); font-weight: 700; letter-spacing: .07em; text-transform: uppercase;
+  color: rgba(225, 210, 255, .72); transition: color .25s, text-shadow .25s;
+}
+#hint.invalid { color: #ffb38a; text-shadow: 0 0 10px rgba(255, 140, 66, .75); }
+#hint.ready { color: var(--yellow); text-shadow: 0 0 8px rgba(255, 211, 25, .8), 0 0 18px rgba(255, 140, 66, .5); }
+#hint.nudge { animation: hintnudge .45s ease-out; }
+@keyframes hintnudge {
+  0%, 100% { transform: translateX(0); }
+  15% { transform: translateX(-8px); color: #fff; }
+  35% { transform: translateX(7px); }
+  55% { transform: translateX(-5px); }
+  75% { transform: translateX(3px); }
+}
 @keyframes knobpulse {
   0%, 100% { box-shadow: 0 0 18px var(--pink), 0 0 42px rgba(255, 43, 214, .55), inset 0 -6px 12px rgba(0,0,0,.45); }
   50% { box-shadow: 0 0 28px #fff, 0 0 70px var(--pink), inset 0 -6px 12px rgba(0,0,0,.45); }
@@ -317,7 +352,8 @@ button:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 @media (max-height: 560px) {
   :root { --key-h: 40px; }
   #topbar { height: 50px; }
+  #hint { margin-bottom: 4px; font-size: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .logo-script, #lever.ready .lever-knob, .start-btn { animation: none !important; }
+  .logo-script, #lever.ready .lever-knob, .start-btn, #hint.nudge, #lever.unlocking .lever-knob { animation: none !important; }
 }

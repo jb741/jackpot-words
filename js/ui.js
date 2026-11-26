@@ -67,13 +67,16 @@ export class Keyboard {
 
 // ---------------------------------------------------------------- lever
 export class Lever {
-  constructor(el, { onPull, onGrab }) {
+  constructor(el, { onPull, onGrab, onLocked }) {
     this.el = el;
     this.knob = $('.lever-knob', el);
     this.shaft = $('.lever-shaft', el);
     this.label = $('.lever-label', el);
     this.onPull = onPull;
     this.onGrab = onGrab;
+    this.onLocked = onLocked;
+    this.locked = true;
+    this.rattleT = 0;
     this.p = 0;         // 0 = up, 1 = pulled all the way down
     this.vel = 0;
     this.dragging = false;
@@ -94,12 +97,35 @@ export class Lever {
     this.bottom = h * 0.74;
     this.pivot = h * 0.66;
   }
-  setReady(on) { this.el.classList.toggle('ready', on && !this.busy); this.label.textContent = on ? 'PULL!' : 'PULL'; }
-  setBusy(on) { this.busy = on; this.el.classList.toggle('busy', on); if (on) this.el.classList.remove('ready'); }
+  /** Locked until the row holds a real word. A locked lever rattles instead of pulling. */
+  setLocked(on) {
+    const was = this.locked;
+    this.locked = on;
+    this.el.classList.toggle('locked', on);
+    this.el.setAttribute('aria-disabled', on ? 'true' : 'false');
+    if (on) this.el.classList.remove('unlocking');
+    if (was && !on && !this.busy) {
+      this.el.classList.remove('unlocking');
+      void this.el.offsetWidth;
+      this.el.classList.add('unlocking');
+    }
+    this.syncLabel();
+  }
+  setBusy(on) { this.busy = on; this.el.classList.toggle('busy', on); this.syncLabel(); }
+  syncLabel() {
+    const ready = !this.locked && !this.busy;
+    this.el.classList.toggle('ready', ready);
+    this.label.textContent = this.busy ? 'PULL' : this.locked ? 'LOCKED' : 'PULL!';
+  }
+  rattle() {
+    this.rattleT = 0.4;
+    this.onLocked && this.onLocked();
+  }
 
   down(e) {
     if (this.busy || this.auto) return;
     e.preventDefault();
+    if (this.locked) { this.onGrab && this.onGrab(); this.rattle(); return; }
     this.el.setPointerCapture(e.pointerId);
     this.dragging = true;
     this.startY = e.clientY;
@@ -130,12 +156,19 @@ export class Lever {
   }
   /** Animate a full pull (used for taps and the Enter key). */
   pull() {
-    if (this.auto) return;
+    if (this.auto || this.busy) return;
+    if (this.locked) { this.rattle(); return; }
     this.fired = false;
     this.auto = { phase: 'down' };
   }
   update(dt) {
-    if (this.auto) {
+    if (this.rattleT > 0) {
+      // tug against the lock: a short, fading jiggle that never gets anywhere
+      this.rattleT = Math.max(0, this.rattleT - dt);
+      const k = this.rattleT / 0.4;
+      this.p = Math.abs(Math.sin((0.4 - this.rattleT) * 48)) * 0.07 * k;
+      this.vel = 0;
+    } else if (this.auto) {
       if (this.auto.phase === 'down') {
         this.p += dt * 6.5;
         if (this.p >= 1) { this.p = 1; if (!this.fired) this.fire(); this.auto.phase = 'hold'; this.auto.t = 0.08; }
@@ -233,9 +266,10 @@ export function switchHtml(name, on) {
   return `<button class="switch${on ? ' on' : ''}" data-switch="${name}" role="switch" aria-checked="${on}"></button>`;
 }
 
-export function statsHtml(st, highlight) {
+export function statsHtml(st, highlight, rows) {
   const pct = st.played ? Math.round((st.won / st.played) * 100) : 0;
-  const max = Math.max(1, ...st.dist);
+  const dist = st.dist.slice(0, rows);
+  const max = Math.max(1, ...dist);
   return `<div class="stat-grid">
       <div><div class="stat-num">${st.played}</div><div class="stat-lbl">PLAYED</div></div>
       <div><div class="stat-num">${pct}</div><div class="stat-lbl">WIN %</div></div>
@@ -243,7 +277,7 @@ export function statsHtml(st, highlight) {
       <div><div class="stat-num">${st.best}</div><div class="stat-lbl">BEST</div></div>
     </div>
     <div class="dist-title">SPINS TO WIN</div>
-    <div class="dist">${st.dist.map((n, i) => `<div class="dist-row"><span>${i + 1}</span>
+    <div class="dist">${dist.map((n, i) => `<div class="dist-row"><span>${i + 1}</span>
         <div class="dist-bar${highlight === i + 1 ? ' current' : ''}" data-w="${Math.max(8, (n / max) * 100)}">${n}</div></div>`).join('')}
     </div>`;
 }

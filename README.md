@@ -1,6 +1,6 @@
 # Jackpot Words
 
-A neon, synthwave slot-machine word game. Guess the secret word in 6 spins: fill a row, pull the lever, and watch the reels land.
+A neon, synthwave slot-machine word game. Guess the secret word: fill a row, pull the lever, and watch the reels land. You get one more spin than the word has letters (6 spins for 5 letters, 7 for 6, 8 for 7), and the lever only unlocks once the row spells a real word.
 
 **Play it:** https://jb741.github.io/jackpot-words/
 

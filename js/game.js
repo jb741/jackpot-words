@@ -1,7 +1,9 @@
 // Game rules, word picking, saving and stats. No graphics in here.
 import { ANSWERS } from './data/words.js';
 
-export const MAX_GUESSES = 6;
+/** Spins allowed: one more than the word length (5 letters: 6, 6 letters: 7, 7 letters: 8). */
+export const guessesFor = (len) => len + 1;
+export const MAX_GUESSES = guessesFor(7);
 export const LENGTHS = [5, 6, 7];
 export const DIFFS = ['easy', 'normal', 'hard'];
 const STORE_KEY = 'jackpotWords.v1';
@@ -107,6 +109,8 @@ export class Store {
         const saved = JSON.parse(raw);
         const d = defaults();
         this.data = { ...d, ...saved, settings: { ...d.settings, ...(saved.settings || {}) }, stats: { ...d.stats, ...(saved.stats || {}) } };
+        // Older saves only tracked 6 spins; pad so 7- and 8-spin wins have a slot.
+        for (const st of Object.values(this.data.stats)) while (st.dist.length < MAX_GUESSES) st.dist.push(0);
       }
     } catch (e) { /* private mode or corrupt: start fresh */ }
   }

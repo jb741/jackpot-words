@@ -3,7 +3,6 @@ import * as THREE from 'three';
 import { GLOW_LAYER } from './stage.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
-export const ROWS = 6;
 export const BLANK = 26;
 const PITCH = 1.16;
 const DEPTH = 0.26;
@@ -14,6 +13,7 @@ const col = (h) => new THREE.Color(h);
 export const PALETTE = {
   emptyBorder: col('#4b2a96'),
   typedBorder: col('#22e8ff'),
+  warnBorder: col('#ff8c42'), // full row that isn't a real word
   hit: col('#16ee6c'), hitBorder: col('#d2ffe6'),
   near: col('#2a63ff'), nearBorder: col('#c0d4ff'),
   miss: col('#d01a37'), missBorder: col('#ffa3b1'),
@@ -434,20 +434,21 @@ export class Board {
     this.size = { w: 1, h: 1 };
   }
 
-  build(cols, { animate = true } = {}) {
+  build(cols, { rows, animate = true } = {}) {
     for (const row of this.tiles) for (const t of row) { this.sway.remove(t.group); t.mat.dispose(); }
     this.tiles = [];
     this.cols = cols;
-    this.size = { w: cols * PITCH - (PITCH - 1), h: ROWS * PITCH - (PITCH - 1) };
+    this.rows = rows;
+    this.size = { w: cols * PITCH - (PITCH - 1), h: rows * PITCH - (PITCH - 1) };
     this.panel.visible = true;
     this.panel.scale.set(this.size.w + 0.62, this.size.h + 0.62, 1);
     this.panel.material.uniforms.uSize.value.set(this.size.w + 0.62, this.size.h + 0.62);
     this.introClock = animate ? 0 : 99;
-    for (let r = 0; r < ROWS; r++) {
+    for (let r = 0; r < rows; r++) {
       const row = [];
       for (let c = 0; c < cols; c++) {
         const t = new Tile(this, r, c);
-        t.home.set((c - (cols - 1) / 2) * PITCH, ((ROWS - 1) / 2 - r) * PITCH, 0);
+        t.home.set((c - (cols - 1) / 2) * PITCH, ((rows - 1) / 2 - r) * PITCH, 0);
         if (animate) { t.intro = 0; t.introDelay = 0.15 + r * 0.07 + c * 0.045 + Math.random() * 0.05; }
         t.update(0, 0, this);
         this.sway.add(t.group);
@@ -472,7 +473,7 @@ export class Board {
     const H = 2 * cam.position.z * Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
     const ppu = vh / H;
     const bw = this.size.w + 0.7, bh = this.size.h + 0.7;
-    const maxTilePx = Math.min(104, rect.height / 6.6);
+    const maxTilePx = Math.min(104, rect.height / (this.rows + 0.6));
     const s = Math.min((rect.width * 0.97) / (bw * ppu), (rect.height * 0.97) / (bh * ppu), maxTilePx / ppu);
     this.root.scale.setScalar(s);
     const cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
@@ -502,6 +503,16 @@ export class Board {
   }
 
   shakeRow(row) { this.shake = { row, t: 0, offset: 0 }; }
+
+  /** Orange outlines on a full row that isn't a real word; back to cyan otherwise. */
+  warnRow(row, on) {
+    const r = this.tiles[row];
+    if (!r) return;
+    for (const t of r) {
+      const L = t.motion ? t.motion.letter : t.letter; // a just-typed letter is still rolling in
+      if (L !== BLANK && !t.result) t.borderTarget.copy(on ? PALETTE.warnBorder : PALETTE.typedBorder);
+    }
+  }
 
   /** The big reveal. All reels spin together and stop one by one, left to right. */
   spinRow(row, letters, results, { tease = false, onLand, onTick } = {}) {
